@@ -166,6 +166,9 @@ vim.o.scrolloff = 10
 -- See `:help 'confirm'`
 vim.o.confirm = true
 
+-- Disable swap files
+vim.o.swapfile = false
+
 -- [[ Basic Keymaps ]]
 --  See `:help vim.keymap.set()`
 
@@ -175,6 +178,13 @@ vim.keymap.set('n', '<Esc>', '<cmd>nohlsearch<CR>')
 
 -- Diagnostic keymaps
 vim.keymap.set('n', '<leader>q', vim.diagnostic.setloclist, { desc = 'Open diagnostic [Q]uickfix list' })
+
+-- Quickfix navigation
+vim.keymap.set('n', '<M-j>', '<cmd>cnext<CR>', { desc = 'Next quickfix item' })
+vim.keymap.set('n', '<M-k>', '<cmd>cprev<CR>', { desc = 'Prev quickfix item' })
+
+-- System clipboard keymaps
+vim.keymap.set({ 'n', 'v' }, '<leader>y', '"+y', { desc = '[Y]ank to system clipboard' })
 
 -- Exit terminal mode in the builtin terminal with a shortcut that is a bit easier
 -- for people to discover. Otherwise, you normally need to press <C-\><C-n>, which
@@ -273,6 +283,22 @@ require('lazy').setup({
   -- See `:help gitsigns` to understand what the configuration keys do
   { -- Adds git related signs to the gutter, as well as utilities for managing changes
     'lewis6991/gitsigns.nvim',
+    keys = {
+      {
+        '<leader>gp',
+        function()
+          require('gitsigns').blame_line { full = true }
+        end,
+        desc = '[G]it current line commit details',
+      },
+      {
+        '<leader>gB',
+        function()
+          require('gitsigns').toggle_current_line_blame()
+        end,
+        desc = '[G]it toggle current line [B]lame',
+      },
+    },
     opts = {
       signs = {
         add = { text = '+' },
@@ -281,6 +307,31 @@ require('lazy').setup({
         topdelete = { text = '‾' },
         changedelete = { text = '~' },
       },
+      current_line_blame = true,
+      current_line_blame_formatter = '<author>, <author_time:%Y-%m-%d %H:%M> • <summary>',
+      current_line_blame_opts = {
+        virt_text = false, -- disable virtual text, we'll show in statusline instead
+        delay = 300,
+      },
+    },
+  },
+
+  {
+    'sindrets/diffview.nvim',
+    cmd = { 'DiffviewOpen', 'DiffviewFileHistory', 'DiffviewClose' },
+    keys = {
+      { '<leader>gH', '<cmd>DiffviewFileHistory --follow %<CR>', desc = '[G]it diffview file [H]istory' },
+      { '<leader>gd', '<cmd>DiffviewOpen<CR>', desc = '[G]it [D]iff working tree' },
+      { '<leader>gq', '<cmd>DiffviewClose<CR>', desc = '[G]it diffview [Q]uit' },
+    },
+    opts = {},
+  },
+
+  {
+    'tpope/vim-fugitive',
+    cmd = { 'Git', 'Gclog' },
+    keys = {
+      { '<leader>gb', '<cmd>Git blame<CR>', desc = '[G]it [B]lame file' },
     },
   },
 
@@ -344,6 +395,8 @@ require('lazy').setup({
 
       -- Document existing key chains
       spec = {
+        { '<leader>g', group = '[G]it' },
+        { '<leader>gP', group = '[G]it [P]R' },
         { '<leader>s', group = '[S]earch' },
         { '<leader>t', group = '[T]oggle' },
         { '<leader>h', group = 'Git [H]unk', mode = { 'n', 'v' } },
@@ -403,7 +456,10 @@ require('lazy').setup({
 
       -- [[ Configure Telescope ]]
       -- See `:help telescope` and `:help telescope.setup()`
-      require('telescope').setup {
+      local telescope = require 'telescope'
+      local builtin = require 'telescope.builtin'
+
+      telescope.setup {
         -- You can put your default mappings / updates / etc. in here
         --  All the info you're looking for is in `:help telescope.setup()`
         --
@@ -421,11 +477,9 @@ require('lazy').setup({
       }
 
       -- Enable Telescope extensions if they are installed
-      pcall(require('telescope').load_extension, 'fzf')
-      pcall(require('telescope').load_extension, 'ui-select')
+      pcall(telescope.load_extension, 'fzf')
+      pcall(telescope.load_extension, 'ui-select')
 
-      -- See `:help telescope.builtin`
-      local builtin = require 'telescope.builtin'
       vim.keymap.set('n', '<leader>sh', builtin.help_tags, { desc = '[S]earch [H]elp' })
       vim.keymap.set('n', '<leader>sk', builtin.keymaps, { desc = '[S]earch [K]eymaps' })
       vim.keymap.set('n', '<leader>sf', builtin.find_files, { desc = '[S]earch [F]iles' })
@@ -554,6 +608,7 @@ require('lazy').setup({
           --  This is where a variable was first declared, or where a function is defined, etc.
           --  To jump back, press <C-t>.
           map('grd', require('telescope.builtin').lsp_definitions, '[G]oto [D]efinition')
+          map('gd', require('telescope.builtin').lsp_definitions, '[G]oto [D]efinition')
 
           -- WARN: This is not Goto Definition, this is Goto Declaration.
           --  For example, in C this would take you to the header.
@@ -672,7 +727,17 @@ require('lazy').setup({
       --        For example, to see the options for `lua_ls`, you could go to: https://luals.github.io/wiki/settings/
       local servers = {
         -- clangd = {},
-        -- gopls = {},
+        gopls = {
+          settings = {
+            gopls = {
+              analyses = {
+                unusedparams = true,
+              },
+              staticcheck = true,
+              gofumpt = true,
+            },
+          },
+        },
         -- pyright = {},
         -- rust_analyzer = {},
         -- ... etc. See `:help lspconfig-all` for a list of all the pre-configured LSPs
@@ -683,6 +748,30 @@ require('lazy').setup({
         -- But for many setups, the LSP (`ts_ls`) will work just fine
         -- ts_ls = {},
         --
+
+        -- Vue 3 Language Server (Volar/vue_ls)
+        vue_ls = {
+          filetypes = { 'vue', 'typescript', 'javascript' },
+        },
+
+        -- TypeScript/JavaScript Language Server
+        -- NOTE: ts_ls is disabled because we're using typescript-tools.nvim
+        -- which provides enhanced TypeScript support and wraps tsserver
+        -- ts_ls = {
+        --   filetypes = { 'typescript', 'javascript', 'javascriptreact', 'typescriptreact', 'vue' },
+        -- },
+
+        -- ESLint for linting
+        eslint = {},
+
+        -- JSON support
+        jsonls = {},
+
+        -- CSS support
+        cssls = {},
+
+        -- HTML support
+        html = {},
 
         lua_ls = {
           -- cmd = { ... },
@@ -713,15 +802,26 @@ require('lazy').setup({
       --
       -- You can add other tools here that you want Mason to install
       -- for you, so that they are available from within Neovim.
-      local ensure_installed = vim.tbl_keys(servers or {})
-      vim.list_extend(ensure_installed, {
-        'stylua', -- Used to format Lua code
-      })
-      require('mason-tool-installer').setup { ensure_installed = ensure_installed }
+      require('mason-tool-installer').setup {
+        ensure_installed = {
+          'lua_ls',
+          'stylua', -- Used to format Lua code
+          'prettier', -- Formatter for Vue, TypeScript, CSS, HTML, JSON
+          'prettierd', -- Faster prettier daemon
+          'eslint', -- ESLint (matches mason-lspconfig name)
+        },
+      }
 
       require('mason-lspconfig').setup {
-        ensure_installed = {}, -- explicitly set to an empty table (Kickstart populates installs via mason-tool-installer)
-        automatic_installation = false,
+        ensure_installed = {
+          'vue_ls', -- Vue Language Server (Volar for Vue 3)
+          -- 'ts_ls' is disabled - using typescript-tools.nvim instead
+          'eslint', -- ESLint LSP
+          'jsonls', -- JSON Language Server
+          'cssls', -- CSS Language Server
+          'html', -- HTML Language Server
+        },
+        automatic_installation = true,
         handlers = {
           function(server_name)
             local server = servers[server_name] or {}
@@ -761,18 +861,26 @@ require('lazy').setup({
           return nil
         else
           return {
-            timeout_ms = 500,
+            timeout_ms = 3000,
             lsp_format = 'fallback',
           }
         end
       end,
       formatters_by_ft = {
         lua = { 'stylua' },
+        json = { 'jq' },
+        go = { 'goimports', 'gofumpt' },
+        -- Vue and TypeScript formatting
+        vue = { 'prettierd', 'prettier', stop_after_first = true },
+        javascript = { 'prettierd', 'prettier', stop_after_first = true },
+        typescript = { 'prettierd', 'prettier', stop_after_first = true },
+        javascriptreact = { 'prettierd', 'prettier', stop_after_first = true },
+        typescriptreact = { 'prettierd', 'prettier', stop_after_first = true },
+        css = { 'prettierd', 'prettier', stop_after_first = true },
+        scss = { 'prettierd', 'prettier', stop_after_first = true },
+        html = { 'prettierd', 'prettier', stop_after_first = true },
         -- Conform can also run multiple formatters sequentially
         -- python = { "isort", "black" },
-        --
-        -- You can use 'stop_after_first' to run the first available formatter from the list
-        -- javascript = { "prettierd", "prettier", stop_after_first = true },
       },
     },
   },
@@ -876,25 +984,78 @@ require('lazy').setup({
     },
   },
 
-  { -- You can easily change to a different colorscheme.
-    -- Change the name of the colorscheme plugin below, and then
-    -- change the command in the config to whatever the name of that colorscheme is.
-    --
-    -- If you want to see what colorschemes are already installed, you can use `:Telescope colorscheme`.
-    'folke/tokyonight.nvim',
+  { -- GitHub theme with automatic OS theme detection
+    'projekt0n/github-nvim-theme',
     priority = 1000, -- Make sure to load this before all the other start plugins.
     config = function()
-      ---@diagnostic disable-next-line: missing-fields
-      require('tokyonight').setup {
-        styles = {
-          comments = { italic = false }, -- Disable italics in comments
+      require('github-theme').setup {
+        options = {
+          -- Compiled code will be stored in ~/.cache/nvim/github-theme directory
+          compile_path = vim.fn.stdpath 'cache' .. '/github-theme',
+          compile_file_suffix = '_compiled', -- Compiled file suffix
+          hide_end_of_buffer = true, -- Hide the '~' character at the end of the buffer
+          hide_nc_statusline = true, -- Override the underline style for non-active statuslines
+          transparent = false, -- Disable setting background
+          terminal_colors = true, -- Set terminal colors (vim.g.terminal_color_*) used in `:terminal`
+          dim_inactive = false, -- Non focused panes set to alternative background
+          module_default = true, -- Default enable value for modules
+          styles = {
+            comments = 'NONE', -- Style that is applied to comments: see `highlight-args` for options
+            functions = 'NONE', -- Style that is applied to functions: see `highlight-args` for options
+            keywords = 'NONE', -- Style that is applied to keywords: see `highlight-args` for options
+            variables = 'NONE', -- Style that is applied to variables: see `highlight-args` for options
+            conditionals = 'NONE', -- Style that is applied to conditionals: see `highlight-args` for options
+            constants = 'NONE', -- Style that is applied to constants: see `highlight-args` for options
+            numbers = 'NONE', -- Style that is applied to numbers: see `highlight-args` for options
+            operators = 'NONE', -- Style that is applied to operators: see `highlight-args` for options
+            strings = 'NONE', -- Style that is applied to strings: see `highlight-args` for options
+            types = 'NONE', -- Style that is applied to types: see `highlight-args` for options
+          },
+          inverse = { -- Inverse highlight for different types
+            match_paren = false,
+            visual = false,
+            search = false,
+          },
         },
+        palettes = {},
+        specs = {},
+        groups = {},
       }
 
-      -- Load the colorscheme here.
-      -- Like many other themes, this one has different styles, and you could load
-      -- any other, such as 'tokyonight-storm', 'tokyonight-moon', or 'tokyonight-day'.
-      vim.cmd.colorscheme 'tokyonight-night'
+      -- Function to detect system theme on macOS
+      local function get_system_theme()
+        local handle = io.popen 'defaults read -g AppleInterfaceStyle 2>/dev/null'
+        if handle then
+          local result = handle:read '*a'
+          handle:close()
+          -- If the command returns "Dark", system is in dark mode
+          if result:match 'Dark' then
+            return 'dark'
+          end
+        end
+        -- Default to light if command fails or returns empty
+        return 'light'
+      end
+
+      -- Set the colorscheme based on system theme
+      local system_theme = get_system_theme()
+      if system_theme == 'dark' then
+        vim.cmd.colorscheme 'github_dark_dimmed'
+      else
+        vim.cmd.colorscheme 'github_light'
+      end
+
+      -- Optional: Add a command to manually toggle between themes
+      vim.api.nvim_create_user_command('ToggleTheme', function()
+        if vim.g.colors_name == 'github_dark' then
+          vim.cmd.colorscheme 'github_light'
+        else
+          vim.cmd.colorscheme 'github_dark'
+        end
+      end, { desc = 'Toggle between light and dark GitHub themes' })
+
+      -- Optional: Add a keymap to toggle theme
+      vim.keymap.set('n', '<leader>tt', '<cmd>ToggleTheme<CR>', { desc = '[T]oggle [T]heme (Light/Dark)' })
     end,
   },
 
@@ -934,6 +1095,82 @@ require('lazy').setup({
         return '%2l:%-2v'
       end
 
+      -- Custom section for git blame (uses gitsigns current_line_blame data)
+      ---@diagnostic disable-next-line: duplicate-set-field
+      statusline.section_git_blame = function()
+        local blame = vim.b.gitsigns_blame_line_dict
+        if not blame or blame.author == nil then
+          return ''
+        end
+        if blame.author == 'Not Committed Yet' then
+          return 'Not Committed Yet'
+        end
+        local author = blame.author or ''
+        local summary = blame.summary or ''
+        local time = blame.author_time or 0
+        local ago = ''
+        if time > 0 then
+          local diff = os.time() - time
+          if diff < 60 then
+            ago = 'just now'
+          elseif diff < 3600 then
+            ago = math.floor(diff / 60) .. 'm ago'
+          elseif diff < 86400 then
+            ago = math.floor(diff / 3600) .. 'h ago'
+          elseif diff < 2592000 then
+            ago = math.floor(diff / 86400) .. 'd ago'
+          elseif diff < 31536000 then
+            ago = math.floor(diff / 2592000) .. 'mo ago'
+          else
+            ago = math.floor(diff / 31536000) .. 'y ago'
+          end
+        end
+
+        local parts = {}
+        if author ~= '' then
+          table.insert(parts, author)
+        end
+        if ago ~= '' then
+          table.insert(parts, ago)
+        end
+
+        local blame_text = table.concat(parts, ', ')
+        if blame_text ~= '' and summary ~= '' then
+          return blame_text .. ' • ' .. summary
+        end
+        if blame_text ~= '' then
+          return blame_text
+        end
+        return summary
+      end
+
+      -- Override the active statusline to include git blame
+      local original_active = statusline.active
+      ---@diagnostic disable-next-line: duplicate-set-field
+      statusline.active = function()
+        local mode, mode_hl = MiniStatusline.section_mode { trunc_width = 120 }
+        local git = MiniStatusline.section_git { trunc_width = 40 }
+        local diff = MiniStatusline.section_diff { trunc_width = 75 }
+        local diagnostics = MiniStatusline.section_diagnostics { trunc_width = 75 }
+        local lsp = MiniStatusline.section_lsp { trunc_width = 75 }
+        local filename = MiniStatusline.section_filename { trunc_width = 140 }
+        local fileinfo = MiniStatusline.section_fileinfo { trunc_width = 120 }
+        local location = MiniStatusline.section_location()
+        local search = MiniStatusline.section_searchcount { trunc_width = 75 }
+        local blame = statusline.section_git_blame()
+
+        return MiniStatusline.combine_groups {
+          { hl = mode_hl, strings = { mode } },
+          { hl = 'MiniStatuslineDevinfo', strings = { git, diff, diagnostics, lsp } },
+          '%<',
+          { hl = 'MiniStatuslineFilename', strings = { filename } },
+          '%=',
+          { hl = 'MiniStatuslineFileinfo', strings = { blame } },
+          { hl = 'MiniStatuslineFileinfo', strings = { fileinfo } },
+          { hl = mode_hl, strings = { search, location } },
+        }
+      end
+
       -- ... and there is more!
       --  Check out: https://github.com/echasnovski/mini.nvim
     end,
@@ -944,7 +1181,27 @@ require('lazy').setup({
     main = 'nvim-treesitter.configs', -- Sets main module to use for opts
     -- [[ Configure Treesitter ]] See `:help nvim-treesitter`
     opts = {
-      ensure_installed = { 'bash', 'c', 'diff', 'html', 'lua', 'luadoc', 'markdown', 'markdown_inline', 'query', 'vim', 'vimdoc' },
+      ensure_installed = {
+        'bash',
+        'c',
+        'css',
+        'diff',
+        'html',
+        'javascript',
+        'jsdoc',
+        'json',
+        'lua',
+        'luadoc',
+        'markdown',
+        'markdown_inline',
+        'query',
+        'scss',
+        'typescript',
+        'tsx',
+        'vim',
+        'vimdoc',
+        'vue',
+      },
       -- Autoinstall languages that are not installed
       auto_install = true,
       highlight = {
@@ -976,15 +1233,15 @@ require('lazy').setup({
   -- require 'kickstart.plugins.debug',
   -- require 'kickstart.plugins.indent_line',
   -- require 'kickstart.plugins.lint',
-  -- require 'kickstart.plugins.autopairs',
-  -- require 'kickstart.plugins.neo-tree',
+  require 'kickstart.plugins.autopairs',
+  require 'kickstart.plugins.neo-tree',
   -- require 'kickstart.plugins.gitsigns', -- adds gitsigns recommend keymaps
 
   -- NOTE: The import below can automatically add your own plugins, configuration, etc from `lua/custom/plugins/*.lua`
   --    This is the easiest way to modularize your config.
   --
   --  Uncomment the following line and add your plugins to `lua/custom/plugins/*.lua` to get going.
-  -- { import = 'custom.plugins' },
+  { import = 'custom.plugins' },
   --
   -- For additional information with loading, sourcing and examples see `:help lazy.nvim-🔌-plugin-spec`
   -- Or use telescope!
@@ -1011,6 +1268,31 @@ require('lazy').setup({
     },
   },
 })
+
+-- [[ Vue 3 + TypeScript Specific Configuration ]]
+
+-- Set up autocommands for Vue files
+vim.api.nvim_create_autocmd('FileType', {
+  pattern = { 'vue', 'typescript', 'javascript' },
+  callback = function()
+    -- Enable better folding for Vue files
+    vim.opt_local.foldmethod = 'expr'
+    vim.opt_local.foldexpr = 'vim.treesitter.foldexpr()'
+    vim.opt_local.foldenable = false -- Start with folds open
+  end,
+})
+
+-- Additional keybindings for Vue development
+vim.keymap.set('n', '<leader>cv', ':Telescope find_files search_dirs={"src/components"}<CR>', { desc = '[C]omponents [V]ue' })
+vim.keymap.set('n', '<leader>cp', ':Telescope find_files search_dirs={"src/pages"}<CR>', { desc = '[C]omponents [P]ages' })
+
+-- Load workspace-specific configuration if it exists
+local workspace_config = vim.fn.getcwd() .. '/.nvimrc.lua'
+if vim.fn.filereadable(workspace_config) == 1 then
+  dofile(workspace_config)
+end
+require('custom.pi_ask').setup()
+
 
 -- The line beneath this is called `modeline`. See `:help modeline`
 -- vim: ts=2 sts=2 sw=2 et
